@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: fukulisane-postgres
+    environment:
+      POSTGRES_USER: fukulisane
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: fukulisane
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - fukulisane-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fukulisane"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: fukulisane-redis
+    ports:
+      - '6379:6379'
+    networks:
+      - fukulisane-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fukulisane-backend
+    environment:
+      DATABASE_URL: postgresql://fukulisane:password@postgres:5432/fukulisane
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: your_jwt_secret_key
+      BACKEND_PORT: 5000
+      NODE_ENV: development
+    ports:
+      - '5000:5000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - fukulisane-network
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: npm run dev
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fukulisane-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:5000
+    ports:
+      - '3000:3000'
+    depends_on:
+      - backend
+    networks:
+      - fukulisane-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev
+
+volumes:
+  postgres_data:
+
+networks:
+  fukulisane-network:
+    driver: bridge
